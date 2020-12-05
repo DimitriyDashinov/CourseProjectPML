@@ -1,0 +1,106 @@
+---
+title: "Course_Project_PML"
+author: "D.Dashinov"
+date: "12/5/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+#Data loading and processing 
+
+Packages
+```{r}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+library(randomForest)
+library(corrplot)
+library(gbm)
+```
+
+The data came in horrible shape including empty columns thousands of NAs, excel 
+errors and redundant calculations such as min, max, skewness and kurtosis. All
+of these were remove prior to loading in R for both the train and valid data set
+```{r}
+train <- read.csv('./pml-training.csv', header=T)
+valid <- read.csv('./pml-testing.csv', header=T)
+dim(train)
+dim(valid)
+```
+We remove the first 7 variables
+```{r}
+trainData <- train[, -c(1:7)]
+validData <- valid[, -c(1:7)]
+```
+Subset train and test data
+```{r}
+set.seed(1234) 
+inTrain <- createDataPartition(trainData$classe, p = 0.7, list = FALSE)
+trainData <- trainData[inTrain, ]
+testData <- trainData[-inTrain, ]
+trainData$classe <- as.factor(trainData$classe)
+testData$classe <- as.factor(testData$classe)
+```
+#Correlation of the variables
+```{r}
+cor_mat <- cor(trainData[, -53])
+corrplot(cor_mat, order = "FPC", method = "color", type = "upper", 
+         tl.cex = 0.8, tl.col = rgb(0, 0, 0))
+```
+We use the findCorrelation function to search for highly correlated attributes 
+with a cut off equal to 0.75
+```{r}
+highlyCorrelated = findCorrelation(cor_mat, cutoff=0.75)
+names(trainData)[highlyCorrelated]
+```
+#Modeling
+Since the outcome is categorical we will try a classification tree, random forest
+and generalized boosted method
+###Tree
+```{r}
+set.seed(12345)
+decisionTreeMod1 <- rpart(classe ~ ., data=trainData, method="class")
+predictTreeMod1 <- predict(decisionTreeMod1, testData, type = "class")
+cmtree <- confusionMatrix(predictTreeMod1, testData$classe)
+cmtree
+```
+The  Accuracy is 0.7415 of this model 
+###Random forest
+```{r}
+controlRF <- trainControl(method="cv", number=3, verboseIter=FALSE)
+modRF1 <- train(classe ~ ., data=trainData, method="rf", trControl=controlRF)
+modRF1$finalModel
+```
+
+```{r}
+predictRFMod <- predict(modRF1$finalModel, testData, type = "class")
+cmRf <- confusionMatrix(predictRFMod, testData$classe)
+cmRf
+```
+Obviously since the accuracy is 1 we have overfiting
+###Boosting
+```{r}
+set.seed(12345)
+controlGBM <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+modGBM  <- train(classe ~ ., data=trainData, method = "gbm", trControl = controlGBM, verbose = FALSE)
+modGBM$finalModel
+```
+Validate the GBM
+```{r}
+predictGBM <- predict(modGBM, newdata=testData)
+cmGBM <- confusionMatrix(predictGBM, testData$classe)
+cmGBM
+```
+The accuracy is 0.9801
+
+#Applying the best model to the validation data set (the GBM)
+```{r}
+Results <- predict(modRF1, newdata=validData)
+Results
+```
+
+
+
+
